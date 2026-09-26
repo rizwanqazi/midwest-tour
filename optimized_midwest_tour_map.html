@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Midwest Masaajid Circuit</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  <style>
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #0f172a;
+    }
+    #app { display: flex; width: 100vw; height: 100vh; height: 100dvh; }
+    
+    #sidebar {
+      width: 380px; min-width: 320px; max-width: 400px; height: 100%; background: #ffffff;
+      display: flex; flex-direction: column; z-index: 1000; box-shadow: 2px 0 12px rgba(0,0,0,0.18);
+    }
+    #sidebar-header {
+      background: #0f172a; color: #ffffff; padding: 14px 18px; border-bottom: 1px solid #334155; flex-shrink: 0;
+    }
+    #sidebar-header h2 { margin: 0 0 3px 0; font-size: 16px; font-weight: 700; }
+    #sidebar-header p { margin: 0; font-size: 11.5px; color: #94a3b8; }
+
+    #stops-list {
+      flex: 1; overflow-y: scroll; list-style: none; margin: 0; padding: 8px 10px; -webkit-overflow-scrolling: touch;
+    }
+    .stop-card {
+      display: flex; align-items: flex-start; padding: 9px; margin-bottom: 6px;
+      border-radius: 8px; border: 1px solid #e2e8f0; background: #f8fafc; cursor: pointer; transition: all 0.15s ease-in-out;
+    }
+    .stop-card:hover, .stop-card:active { background: #e0f2fe; border-color: #38bdf8; }
+    .stop-card.active { background: #dbeafe; border-color: #2563eb; }
+
+    .badge {
+      font-size: 10px; font-weight: 700; border-radius: 5px; padding: 3px 6px;
+      min-width: 26px; text-align: center; margin-right: 9px; color: white; background: #475569; flex-shrink: 0;
+    }
+    .badge-start { background: #16a34a !important; }
+    .badge-end { background: #dc2626 !important; }
+
+    .stop-meta { flex: 1; min-width: 0; }
+    .stop-title { font-size: 13px; font-weight: 700; color: #0f172a; margin-bottom: 2px; }
+    .stop-masjid { font-size: 11.5px; font-weight: 600; color: #1e40af; margin-bottom: 2px; }
+    .stop-addr { font-size: 11px; color: #475569; margin-bottom: 2px; line-height: 1.3; }
+    .stop-pop { font-size: 10.5px; font-weight: 500; color: #64748b; }
+
+    #map { flex: 1; height: 100%; width: 100%; position: relative; z-index: 10; }
+
+    /* Responsive mobile rules */
+    #mobile-bar {
+      display: none; position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+      z-index: 2000; background: #0f172a; color: white; border: 1px solid #334155;
+      padding: 10px 20px; border-radius: 30px; font-size: 13px; font-weight: 600;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.35); cursor: pointer;
+    }
+    @media (max-width: 768px) {
+      #mobile-bar { display: block; }
+      #sidebar { width: 100%; max-width: 100%; min-width: 100%; position: absolute; top: 0; bottom: 0; left: 0; right: 0; }
+      body.show-map #sidebar { display: none !important; }
+    }
+
+    /* Custom Leaflet Tooltip Card Styling */
+    .custom-tooltip {
+      background: #ffffff !important; border-radius: 6px !important; padding: 6px 10px !important;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.22) !important; font-family: inherit !important;
+      line-height: 1.35 !important; border-top: none !important; border-left: none !important; border-right: none !important;
+    }
+    .tooltip-start { border-bottom: 3.5px solid #15803D !important; }
+    .tooltip-end { border-bottom: 3.5px solid #B91C1C !important; }
+    .tooltip-mid { border-bottom: 3.5px solid #1E40AF !important; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="sidebar">
+      <div id="sidebar-header">
+        <h2>Midwest Masaajid Circuit</h2>
+        <p>54 Destinations &bull; Click/Tap to Fly &amp; Inspect</p>
+      </div>
+      <ul id="stops-list"></ul>
+    </div>
+    <div id="map"></div>
+  </div>
+
+  <button id="mobile-bar" onclick="toggleMobileView()">Switch to Map</button>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const stopsData = [{"id": 1, "city": "Duluth", "state": "MN", "lat": 46.7867, "lon": -92.1005, "masjid": "Islamic Center of The Twin Ports", "addr": "145 W Winona St, Duluth, MN 55803", "pop": "800 - 1,200"}, {"id": 2, "city": "Hibbing", "state": "MN", "lat": 47.4272, "lon": -92.9377, "masjid": "Mesabi Range Musalla", "addr": "145 W Winona St, Duluth, MN 55803 (Regional Center)", "pop": "100 - 200"}, {"id": 3, "city": "Bemidji", "state": "MN", "lat": 47.4736, "lon": -94.8803, "masjid": "Bemidji Area Islamic Community", "addr": "1500 Birchmont Dr NE, Bemidji, MN 56601", "pop": "300 - 500"}, {"id": 4, "city": "Thief River Falls", "state": "MN", "lat": 48.1191, "lon": -95.9839, "masjid": "TRF Community Musalla", "addr": "318 N Main Ave, Thief River Falls, MN 56701", "pop": "200 - 400"}, {"id": 5, "city": "Grand Forks", "state": "ND/MN", "lat": 47.9253, "lon": -97.0329, "masjid": "Islamic Center of Grand Forks", "addr": "2122 17th Ave S, Grand Forks, ND 58201", "pop": "2,500 - 3,500"}, {"id": 6, "city": "Fargo", "state": "ND/MN", "lat": 46.8772, "lon": -96.7898, "masjid": "Islamic Society of Fargo-Moorhead", "addr": "601 28th St S, Fargo, ND 58103", "pop": "6,000 - 8,000"}, {"id": 7, "city": "Detroit Lakes", "state": "MN", "lat": 46.8172, "lon": -95.8453, "masjid": "Lakes Area Islamic Fellowship", "addr": "808 Washington Ave, Detroit Lakes, MN 56501", "pop": "150 - 250"}, {"id": 8, "city": "Brainerd", "state": "MN", "lat": 46.358, "lon": -94.2008, "masjid": "Brainerd Lakes Musalla", "addr": "501 Laurel St, Brainerd, MN 56401", "pop": "200 - 350"}, {"id": 9, "city": "Little Falls", "state": "MN", "lat": 45.9764, "lon": -94.3628, "masjid": "Morrison County Outreach", "addr": "375 5th Ave S, St Cloud, MN 56301 (Regional Center)", "pop": "100 - 200"}, {"id": 10, "city": "St. Cloud", "state": "MN", "lat": 45.5579, "lon": -94.1632, "masjid": "Islamic Center of St Cloud", "addr": "375 5th Ave S, St Cloud, MN 56301", "pop": "10,000 - 14,000"}, {"id": 11, "city": "Minneapolis", "state": "MN", "lat": 44.9778, "lon": -93.265, "masjid": "Abuubakar As-Saddique Islamic Center", "addr": "2824 13th Ave S, Minneapolis, MN 55407", "pop": "100,000+ (Metro)"}, {"id": 12, "city": "St. Paul", "state": "MN", "lat": 44.9537, "lon": -93.09, "masjid": "Darul Uloom Islamic Center", "addr": "977 5th St E, St Paul, MN 55106", "pop": "40,000+"}, {"id": 13, "city": "Hutchinson", "state": "MN", "lat": 44.8894, "lon": -94.3678, "masjid": "McLeod County Musalla", "addr": "1112 Lake Ave NW, Willmar, MN 56201 (Regional Center)", "pop": "250 - 450"}, {"id": 14, "city": "Willmar", "state": "MN", "lat": 45.1219, "lon": -95.0433, "masjid": "Islamic Society of Willmar", "addr": "1112 Lake Ave NW, Willmar, MN 56201", "pop": "3,500 - 5,000"}, {"id": 15, "city": "Marshall", "state": "MN", "lat": 44.4469, "lon": -95.7883, "masjid": "Islamic Society of Marshall", "addr": "110 S 10th St, Marshall, MN 56258", "pop": "1,500 - 2,500"}, {"id": 16, "city": "Worthington", "state": "MN", "lat": 43.6197, "lon": -95.5964, "masjid": "Islamic Center of Worthington", "addr": "315 10th St, Worthington, MN 56187", "pop": "2,000 - 3,000"}, {"id": 17, "city": "Mankato", "state": "MN", "lat": 44.1636, "lon": -93.9994, "masjid": "Mankato Islamic Center", "addr": "329 N Broad St, Mankato, MN 56001", "pop": "3,000 - 4,500"}, {"id": 18, "city": "Fairmont", "state": "MN", "lat": 43.6522, "lon": -94.4611, "masjid": "Martin County Musalla", "addr": "329 N Broad St, Mankato, MN 56001 (Regional Center)", "pop": "150 - 300"}, {"id": 19, "city": "Faribault", "state": "MN", "lat": 44.295, "lon": -93.2688, "masjid": "AbuBakar As-Saddique Masjid", "addr": "1201 Division St W, Faribault, MN 55021", "pop": "4,000 - 6,000"}, {"id": 20, "city": "Owatonna", "state": "MN", "lat": 44.0839, "lon": -93.226, "masjid": "Masjid Al-Rahmah", "addr": "509 12th St NE, Owatonna, MN 55060", "pop": "2,500 - 3,500"}, {"id": 21, "city": "Albert Lea", "state": "MN", "lat": 43.648, "lon": -93.3683, "masjid": "Albert Lea Islamic Center", "addr": "1010 S Broadway Ave, Albert Lea, MN 56007", "pop": "1,000 - 1,500"}, {"id": 22, "city": "Mason City", "state": "IA", "lat": 43.1536, "lon": -93.201, "masjid": "North Iowa Islamic Center", "addr": "626 S Federal Ave, Mason City, IA 50401", "pop": "400 - 700"}, {"id": 23, "city": "Waverly", "state": "IA", "lat": 42.7261, "lon": -92.4699, "masjid": "Cedar Valley Musalla", "addr": "100 Wartburg Blvd, Waverly, IA 50677", "pop": "250 - 400"}, {"id": 24, "city": "Waterloo", "state": "IA", "lat": 42.4928, "lon": -92.3426, "masjid": "Cedar Valley Muslim Association", "addr": "1515 W 4th St, Waterloo, IA 50702", "pop": "5,000 - 7,000"}, {"id": 25, "city": "Dubuque", "state": "IA", "lat": 42.5006, "lon": -90.6646, "masjid": "Tri-State Islamic Center", "addr": "2405 Matthew John Dr, Dubuque, IA 52002", "pop": "1,000 - 1,500"}, {"id": 26, "city": "Beloit", "state": "WI", "lat": 42.5083, "lon": -89.0318, "masjid": "Beloit Islamic Community Musalla", "addr": "700 College St, Beloit, WI 53511", "pop": "500 - 800"}, {"id": 27, "city": "Janesville", "state": "WI", "lat": 42.6828, "lon": -89.0187, "masjid": "Islamic Center of Janesville", "addr": "2118 E Milwaukee St, Janesville, WI 53545", "pop": "1,200 - 1,800"}, {"id": 28, "city": "Madison", "state": "WI", "lat": 43.0731, "lon": -89.4012, "masjid": "Islamic Center of Madison (ICM)", "addr": "602 Krenz Way, Madison, WI 53715", "pop": "12,000 - 16,000"}, {"id": 29, "city": "Sun Prairie", "state": "WI", "lat": 43.1836, "lon": -89.2137, "masjid": "Sun Prairie Islamic Society", "addr": "200 Corporate Dr, Sun Prairie, WI 53590", "pop": "1,000 - 1,500"}, {"id": 30, "city": "Lake Mills", "state": "WI", "lat": 43.0811, "lon": -88.9137, "masjid": "Jefferson County Outreach", "addr": "100 N Main St, Lake Mills, WI 53551", "pop": "150 - 250"}, {"id": 31, "city": "Watertown", "state": "WI", "lat": 43.1947, "lon": -88.7287, "masjid": "Watertown Muslim Musalla", "addr": "106 S 1st St, Watertown, WI 53094", "pop": "300 - 500"}, {"id": 32, "city": "Oconomowoc", "state": "WI", "lat": 43.1117, "lon": -88.4993, "masjid": "Lake Country Islamic Association", "addr": "1200 Summit Ave, Oconomowoc, WI 53066", "pop": "400 - 600"}, {"id": 33, "city": "Hartland", "state": "WI", "lat": 43.1042, "lon": -88.3448, "masjid": "Hartland Community Musalla", "addr": "1645 East Ave, Waukesha, WI 53186 (Regional Hub)", "pop": "350 - 550"}, {"id": 34, "city": "Waukesha", "state": "WI", "lat": 43.0117, "lon": -88.2315, "masjid": "ISM West - Masjid Al-Noor", "addr": "1645 East Ave, Waukesha, WI 53186", "pop": "5,000 - 7,500"}, {"id": 35, "city": "Milwaukee", "state": "WI", "lat": 43.0389, "lon": -87.9065, "masjid": "Islamic Society of Milwaukee (Main)", "addr": "4707 S 13th St, Milwaukee, WI 53221", "pop": "40,000+"}, {"id": 36, "city": "Hartford", "state": "WI", "lat": 43.3217, "lon": -88.3801, "masjid": "Washington County Musalla", "addr": "109 N Main St, Hartford, WI 53027", "pop": "200 - 350"}, {"id": 37, "city": "Fond du Lac", "state": "WI", "lat": 43.773, "lon": -88.4471, "masjid": "Fond du Lac Islamic Center", "addr": "465 S National Ave, Fond du Lac, WI 54935", "pop": "600 - 1,000"}, {"id": 38, "city": "Plymouth", "state": "WI", "lat": 43.7489, "lon": -87.9776, "masjid": "Sheboygan County West Musalla", "addr": "1432 S 13th St, Sheboygan, WI 53081 (Regional Hub)", "pop": "150 - 300"}, {"id": 39, "city": "Sheboygan", "state": "WI", "lat": 43.7508, "lon": -87.7145, "masjid": "Islamic Society of Sheboygan", "addr": "1432 S 13th St, Sheboygan, WI 53081", "pop": "1,500 - 2,200"}, {"id": 40, "city": "Manitowoc", "state": "WI", "lat": 44.0886, "lon": -87.6576, "masjid": "Lakeshore Islamic Center", "addr": "1022 S 11th St, Manitowoc, WI 54220", "pop": "600 - 900"}, {"id": 41, "city": "Two Rivers", "state": "WI", "lat": 44.1539, "lon": -87.5692, "masjid": "Two Rivers Prayer Group", "addr": "1022 S 11th St, Manitowoc, WI 54220 (Regional Hub)", "pop": "150 - 250"}, {"id": 42, "city": "Green Bay", "state": "WI", "lat": 44.5192, "lon": -88.0198, "masjid": "Islamic Society of Green Bay", "addr": "2049 University Ave, Green Bay, WI 54302", "pop": "4,000 - 6,000"}, {"id": 43, "city": "Appleton", "state": "WI", "lat": 44.2619, "lon": -88.4154, "masjid": "Islamic Center of Fox Valley", "addr": "1335 E Wisconsin Ave, Appleton, WI 54911", "pop": "3,500 - 5,000"}, {"id": 44, "city": "Oshkosh", "state": "WI", "lat": 44.0247, "lon": -88.5426, "masjid": "Oshkosh Islamic Center", "addr": "830 S Main St, Oshkosh, WI 54902", "pop": "1,800 - 2,800"}, {"id": 45, "city": "Stevens Point", "state": "WI", "lat": 44.5236, "lon": -89.5746, "masjid": "Central Wisconsin Islamic Center", "addr": "1205 2nd St, Stevens Point, WI 54481", "pop": "800 - 1,200"}, {"id": 46, "city": "Wisconsin Rapids", "state": "WI", "lat": 44.3836, "lon": -89.8173, "masjid": "Wood County Musalla", "addr": "441 8th St S, Wisconsin Rapids, WI 54494", "pop": "300 - 500"}, {"id": 47, "city": "Marshfield", "state": "WI", "lat": 44.6689, "lon": -90.1718, "masjid": "Marshfield Islamic Center", "addr": "1009 S Central Ave, Marshfield, WI 54449", "pop": "600 - 900"}, {"id": 48, "city": "Wausau", "state": "WI", "lat": 44.9591, "lon": -89.6301, "masjid": "Islamic Society of Central Wisconsin", "addr": "1421 Merrill Ave, Wausau, WI 54401", "pop": "1,200 - 1,800"}, {"id": 49, "city": "Rice Lake", "state": "WI", "lat": 45.5061, "lon": -91.7382, "masjid": "Barron County Muslim Fellowship", "addr": "18 E Eau Claire St, Rice Lake, WI 54868", "pop": "200 - 350"}, {"id": 50, "city": "Menomonie", "state": "WI", "lat": 44.8755, "lon": -91.9193, "masjid": "UW-Stout Musalla", "addr": "302 10th Ave E, Menomonie, WI 54751", "pop": "400 - 700"}, {"id": 51, "city": "Eau Claire", "state": "WI", "lat": 44.8113, "lon": -91.4985, "masjid": "Islamic Society of Northern Wisconsin", "addr": "427 Water St, Eau Claire, WI 54703", "pop": "1,500 - 2,200"}, {"id": 52, "city": "Freeport", "state": "IL", "lat": 42.2967, "lon": -89.6212, "masjid": "Freeport Islamic Musalla", "addr": "524 W Stephenson St, Freeport, IL 61032", "pop": "300 - 500"}, {"id": 53, "city": "Rockford", "state": "IL", "lat": 42.2711, "lon": -89.094, "masjid": "Muslim Community Center of Rockford", "addr": "2823 11th St, Rockford, IL 61109", "pop": "7,000 - 9,000"}, {"id": 54, "city": "Chicago", "state": "IL", "lat": 41.8781, "lon": -87.6298, "masjid": "Downtown Islamic Center (DIC)", "addr": "231 S State St, Chicago, IL 60604", "pop": "300,000+ (Metro)"}];
+    let isMapView = false;
+
+    function toggleMobileView() {
+      isMapView = !isMapView;
+      const btn = document.getElementById("mobile-bar");
+      if (isMapView) {
+        document.body.classList.add("show-map");
+        btn.innerText = "Switch to Cities List";
+        setTimeout(() => { map.invalidateSize(); }, 100);
+      } else {
+        document.body.classList.remove("show-map");
+        btn.innerText = "Switch to Map";
+      }
+    }
+
+    // Initialize Map with reliable Esri Street Map tiles
+    const map = L.map('map', {
+      center: [44.8, -91.5],
+      zoom: 6,
+      zoomControl: true
+    });
+
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+      attribution: 'Tiles &copy; Esri'
+    }).addTo(map);
+
+    // Draw route line
+    const coords = stopsData.map(s => [s.lat, s.lon]);
+    L.polyline(coords, {
+      color: '#1D4ED8',
+      weight: 3.5,
+      opacity: 0.85,
+      dashArray: '6, 6'
+    }).addTo(map);
+
+    const markerRegistry = {};
+
+    // Render Markers
+    stopsData.forEach((s, idx) => {
+      const isStart = (s.id === 1);
+      const isEnd = (s.id === stopsData.length);
+
+      let badgeColor = isStart ? '#15803D' : (isEnd ? '#B91C1C' : '#1E40AF');
+      let badgeLabel = isStart ? `START: ${s.city}, ${s.state}` : (isEnd ? `END: ${s.city}, ${s.state}` : `#${s.id}. ${s.city}, ${s.state}`);
+      let tooltipClass = isStart ? 'custom-tooltip tooltip-start' : (isEnd ? 'custom-tooltip tooltip-end' : 'custom-tooltip tooltip-mid');
+
+      let cardHtml = `
+        <div style="min-width: 230px; text-align: left;">
+          <div style="background: ${badgeColor}; color: #fff; font-weight: 700; font-size: 11px; padding: 3px 8px; border-radius: 4px; display: inline-block; margin-bottom: 5px;">
+            ${badgeLabel}
+          </div>
+          <div style="font-size: 12.5px; font-weight: 700; color: #0f172a; margin-bottom: 3px;">${s.masjid}</div>
+          <div style="font-size: 11px; color: #475569; margin-bottom: 4px;">${s.addr}</div>
+          <div style="font-size: 11px; font-weight: 600; color: ${badgeColor};">Est. Muslim Pop: ${s.pop}</div>
+        </div>
+      `;
+
+      let marker;
+
+      if (isStart) {
+        // Custom HTML Pin for Start (Green with Play Icon)
+        const startIcon = L.divIcon({
+          className: '',
+          html: `<div style="background:#15803D; width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:white; font-size:14px; box-shadow:0 3px 8px rgba(0,0,0,0.3); border:2px solid white;"><i class="fa fa-play" style="margin-left:2px;"></i></div>`,
+          iconSize: [34, 34],
+          iconAnchor: [17, 17]
+        });
+        marker = L.marker([s.lat, s.lon], { icon: startIcon }).addTo(map);
+        marker.bindTooltip(cardHtml, { permanent: true, direction: 'top', offset: [0, -22], className: tooltipClass });
+      } else if (isEnd) {
+        // Custom HTML Pin for End (Red with Flag Icon)
+        const endIcon = L.divIcon({
+          className: '',
+          html: `<div style="background:#B91C1C; width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:white; font-size:14px; box-shadow:0 3px 8px rgba(0,0,0,0.3); border:2px solid white;"><i class="fa fa-flag-checkered"></i></div>`,
+          iconSize: [34, 34],
+          iconAnchor: [17, 17]
+        });
+        marker = L.marker([s.lat, s.lon], { icon: endIcon }).addTo(map);
+        marker.bindTooltip(cardHtml, { permanent: true, direction: 'top', offset: [0, -22], className: tooltipClass });
+      } else {
+        // Intermediate blue circle markers
+        marker = L.circleMarker([s.lat, s.lon], {
+          radius: 7,
+          color: '#1E3A8A',
+          fillColor: '#3B82F6',
+          fillOpacity: 0.9,
+          weight: 2
+        }).addTo(map);
+        marker.bindTooltip(cardHtml, { permanent: false, direction: 'top', offset: [0, -10], className: tooltipClass });
+      }
+
+      markerRegistry[s.id] = marker;
+    });
+
+    // Build sidebar list
+    const list = document.getElementById("stops-list");
+    stopsData.forEach(s => {
+      const li = document.createElement("li");
+      li.className = "stop-card";
+
+      let badgeClass = s.id === 1 ? "badge-start" : (s.id === stopsData.length ? "badge-end" : "");
+      let badgeLabel = s.id === 1 ? "START" : (s.id === stopsData.length ? "END" : "#" + s.id);
+
+      li.innerHTML = `
+        <div class="badge ${badgeClass}">${badgeLabel}</div>
+        <div class="stop-meta">
+          <div class="stop-title">${s.city}, ${s.state}</div>
+          <div class="stop-masjid">${s.masjid}</div>
+          <div class="stop-addr">${s.addr}</div>
+          <div class="stop-pop">Est. Muslim Pop: ${s.pop}</div>
+        </div>
+      `;
+
+      li.addEventListener("click", () => {
+        document.querySelectorAll(".stop-card").forEach(el => el.classList.remove("active"));
+        li.classList.add("active");
+
+        if (window.innerWidth <= 768) {
+          document.body.classList.add("show-map");
+          isMapView = true;
+          document.getElementById("mobile-bar").innerText = "Switch to Cities List";
+        }
+
+        map.invalidateSize();
+        map.flyTo([s.lat, s.lon], 13, { animate: true, duration: 1.0 });
+
+        const m = markerRegistry[s.id];
+        if (m) {
+          setTimeout(() => { m.openTooltip(); }, 450);
+        }
+      });
+
+      list.appendChild(li);
+    });
+  </script>
+</body>
+</html>
